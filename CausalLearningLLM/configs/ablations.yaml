@@ -1,0 +1,20 @@
+ablations:
+  variants:
+    - name: "no_intervention"
+      cra.intervention_strengths: [0.0]
+    - name: "random_direction"
+      cra.direction_types: ["random"]
+    - name: "sensitive_probe_only"
+      cra.direction_types: ["sensitive_probe"]
+    - name: "spurious_probe_only"
+      cra.direction_types: ["spurious_probe"]
+    - name: "clinical_probe_only"
+      cra.direction_types: ["clinical_probe"]
+    - name: "pooling_last"
+      model.pooling: "last"
+    - name: "pooling_mean"
+      model.pooling: "mean"
+    - name: "lambda_small"
+      cra.intervention_strengths: [0.1, 0.25]
+    - name: "lambda_large"
+      cra.intervention_strengths: [3.0, 5.0]

@@ -1,0 +1,14 @@
+experiments:
+  run_layer_profile: true
+  run_direction_geometry: true
+  run_taxonomy: true
+  run_cra_interventions: true
+  run_baseline_comparison: true
+  run_privacy_utility: true
+  run_robustness_spuriousness: true
+  run_counterfactual_robustness: true
+  run_mediation: true
+  run_umap: true
+  run_ablations: true
+  run_synthetic_validation: true
+  run_theorem_verification: true
