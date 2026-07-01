@@ -1,0 +1,74 @@
+experiment:
+  name: "cra_mimic"
+  seed: 42
+  output_dir: "outputs/mimic"
+  debug: false
+  num_samples: 1000
+  batch_size: 4
+  device: "auto"
+  deterministic: true
+
+dataset:
+  name: "mimic_placeholder"
+  split: "train"
+  max_samples: 1000
+  use_synthetic_attributes: false
+  sensitive_attributes: ["age_group", "gender", "insurance_type", "ethnicity"]
+  spurious_attributes: ["department", "note_style", "source_template"]
+  correlation_strength: null
+  counterfactual_generation: false
+  train_val_test_split: [0.7, 0.15, 0.15]
+
+model:
+  name: "distilgpt2"
+  tokenizer_name: "distilgpt2"
+  dtype: "float32"
+  max_length: 512
+  selected_layers: [0, 1, 2, 3, 4, 5]
+  extract_attentions: false
+  pooling: "mean"
+  answer_scoring: "log_prob"
+
+probes:
+  probe_types: ["logistic"]
+  train_layers: [0, 1, 2, 3, 4, 5]
+  regularization: 1.0
+  test_size: 0.2
+  random_state: 42
+  max_iter: 500
+
+cra:
+  intervention_strengths: [0.5, 1.0, 2.0]
+  direction_types: ["clinical_probe", "sensitive_probe", "spurious_probe", "random"]
+  top_k_directions: 5
+  layer_selection: [0, 1, 2, 3, 4, 5]
+  beta_privacy: 1.0
+  eta_robustness: 1.0
+  gamma_task: 0.5
+  taxonomy_thresholds:
+    clinical: 0.6
+    sensitive: 0.55
+    spurious: 0.55
+    utility_loss: 0.1
+
+baselines:
+  enable_integrated_gradients: false
+  enable_shap: false
+  enable_attention_rollout: false
+  enable_activation_patching: true
+  enable_causal_tracing: false
+  enable_inlp: true
+  inlp_rounds: 5
+
+evaluation:
+  metrics: ["accuracy", "balanced_accuracy", "auroc", "cross_entropy"]
+  bootstrap_samples: 500
+  confidence_level: 0.95
+  statistical_tests: ["paired_t", "wilcoxon"]
+
+visualization:
+  save_pdf: true
+  save_svg: true
+  save_png: true
+  color_palette: "colorblind"
+  figure_dpi: 300

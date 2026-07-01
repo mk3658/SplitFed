@@ -1,0 +1,29 @@
+visualization:
+  style:
+    figure_width: 8
+    figure_height: 5
+    font_family: "DejaVu Sans"
+    font_size: 12
+    title_size: 14
+    label_size: 11
+    tick_size: 10
+    legend_size: 10
+    line_width: 2.0
+    marker_size: 6
+    spine_right: false
+    spine_top: false
+    grid_alpha: 0.3
+    dpi: 300
+  colors:
+    clinical: "#1f77b4"
+    sensitive: "#d62728"
+    spurious: "#2ca02c"
+    cra: "#9467bd"
+    random: "#7f7f7f"
+    baseline: "#17becf"
+    nuisance: "#c7c7c7"
+    mixed: "#ff7f0e"
+  colormaps:
+    diverging: "RdBu_r"
+    sequential: "viridis"
+    heatmap: "cividis"
