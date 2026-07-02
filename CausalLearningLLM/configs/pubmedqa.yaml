@@ -3,7 +3,7 @@ experiment:
   seed: 42
   output_dir: "outputs/pubmedqa"
   debug: false
-  num_samples: 500
+  num_samples: 450
   batch_size: 8
   device: "auto"
   deterministic: true
@@ -11,7 +11,7 @@ experiment:
 dataset:
   name: "pubmedqa"
   split: "train"
-  max_samples: 500
+  max_samples: 450
   use_synthetic_attributes: true
   sensitive_attributes: ["age_group", "gender", "hospital_type"]
   spurious_attributes: ["note_style", "department", "source_template"]
@@ -35,7 +35,7 @@ probes:
   regularization: 1.0
   test_size: 0.2
   random_state: 42
-  max_iter: 500
+  max_iter: 2000
 
 cra:
   intervention_strengths: [0.25, 0.5, 1.0, 2.0, 4.0]

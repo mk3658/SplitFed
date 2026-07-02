@@ -266,6 +266,197 @@ def verify_claim6_conditional_leakage(
     return df
 
 
+def verify_causal_claims(
+    layer_data: Dict,
+    probe_results: Dict,
+    causal_directions: Optional[Dict] = None,  # {layer: v_causal ndarray}
+    output_dir: Optional[str] = None,
+) -> pd.DataFrame:
+    """Verify causal claims with PM, NDE, HSIC, causal-direction separation.
+
+    For each layer computes:
+      - PM (proportion mediated) via run_mediation_analysis
+      - NDE_nonzero: whether natural direct effect is meaningfully non-zero
+      - cos_causal_corr: cosine between causal and correlational directions
+      - hsic_reduction_pct: % HSIC reduction after direction removal
+      - conditional_leakage_before / _after
+
+    Parameters
+    ----------
+    layer_data : Dict
+        Mapping layer -> {"Z": ndarray, "labels": array, ...}
+    probe_results : Dict
+        Mapping layer -> {"probes": {"sensitive": probe, ...}}
+    causal_directions : Optional[Dict]
+        Mapping layer -> v_causal (ndarray).  If None, cos_causal_corr is NaN.
+    output_dir : Optional[str]
+        If provided, saves causal_claims_verification.csv there.
+
+    Returns
+    -------
+    pd.DataFrame with columns:
+        layer, PM, NDE_nonzero, cos_causal_corr,
+        hsic_reduction_pct, conditional_leakage_before, conditional_leakage_after
+    """
+    # Lazy imports so the function only errors if the sub-modules are missing,
+    # not when verification.py is first imported.
+    try:
+        from src.causal.mediation import run_mediation_analysis
+    except ImportError:
+        run_mediation_analysis = None
+        logger.warning("src.causal.mediation not found; PM/NDE will be NaN")
+
+    try:
+        from src.causal.independence import hsic_delta
+    except ImportError:
+        hsic_delta = None
+        logger.warning("src.causal.independence not found; HSIC metrics will be NaN")
+
+    try:
+        from src.privacy.leakage import conditional_leakage
+    except ImportError:
+        conditional_leakage = None
+        logger.warning("src.privacy.leakage not found; leakage metrics will be NaN")
+
+    try:
+        from src.representations.extraction import get_sensitive_labels
+    except ImportError:
+        get_sensitive_labels = None
+        logger.warning("src.representations.extraction not found; some metrics unavailable")
+
+    rows = []
+
+    for l, data in layer_data.items():
+        if l not in probe_results:
+            continue
+
+        probes = probe_results[l].get("probes", {})
+        probe_s = probes.get("sensitive")
+        if probe_s is None:
+            continue
+
+        Z = data["Z"]
+        y = data.get("labels")
+
+        # Sensitive labels
+        s_labels = None
+        if get_sensitive_labels is not None:
+            s_labels = get_sensitive_labels(layer_data, "sensitive", l)
+
+        v_corr = probe_s.get_direction()
+
+        # ------------------------------------------------------------------
+        # PM and NDE via mediation analysis
+        # ------------------------------------------------------------------
+        pm = float("nan")
+        nde_nonzero = False
+        if run_mediation_analysis is not None and y is not None and s_labels is not None:
+            try:
+                med_result = run_mediation_analysis(Z, s_labels, y)
+                pm = float(med_result.get("PM", float("nan")))
+                nde = float(med_result.get("NDE", 0.0))
+                nde_nonzero = abs(nde) > 0.05
+            except Exception as exc:
+                logger.warning("Layer %s: run_mediation_analysis failed: %s", l, exc)
+
+        # ------------------------------------------------------------------
+        # Cosine between causal direction and correlational direction
+        # ------------------------------------------------------------------
+        cos_causal_corr = float("nan")
+        if causal_directions is not None and l in causal_directions and v_corr is not None:
+            v_causal = causal_directions[l]
+            try:
+                cos_causal_corr = float(cosine_similarity(v_causal, v_corr))
+                cos_causal_corr = abs(cos_causal_corr)
+            except Exception as exc:
+                logger.warning("Layer %s: cosine_similarity failed: %s", l, exc)
+
+        # ------------------------------------------------------------------
+        # HSIC before / after direction removal
+        # ------------------------------------------------------------------
+        hsic_reduction_pct = float("nan")
+        if hsic_delta is not None and s_labels is not None and v_corr is not None:
+            try:
+                hsic_before, hsic_after = hsic_delta(Z, s_labels, v_corr)
+                if abs(hsic_before) > 1e-12:
+                    hsic_reduction_pct = 100.0 * (hsic_before - hsic_after) / abs(hsic_before)
+                else:
+                    hsic_reduction_pct = 0.0
+            except Exception as exc:
+                logger.warning("Layer %s: hsic_delta failed: %s", l, exc)
+
+        # ------------------------------------------------------------------
+        # Conditional leakage before / after removing sensitive direction
+        # ------------------------------------------------------------------
+        cond_leak_before = float("nan")
+        cond_leak_after = float("nan")
+        if (
+            conditional_leakage is not None
+            and y is not None
+            and s_labels is not None
+            and v_corr is not None
+        ):
+            try:
+                result_before = conditional_leakage(probe_s, Z, s_labels, y)
+                cond_leak_before = float(
+                    result_before.get("conditional_leakage_auroc", float("nan"))
+                )
+                Z_prime = remove_direction(Z, v_corr, lam=1.0)
+                result_after = conditional_leakage(probe_s, Z_prime, s_labels, y)
+                cond_leak_after = float(
+                    result_after.get("conditional_leakage_auroc", float("nan"))
+                )
+            except Exception as exc:
+                logger.warning("Layer %s: conditional_leakage failed: %s", l, exc)
+
+        rows.append({
+            "layer": l,
+            "PM": pm,
+            "NDE_nonzero": nde_nonzero,
+            "cos_causal_corr": cos_causal_corr,
+            "hsic_reduction_pct": hsic_reduction_pct,
+            "conditional_leakage_before": cond_leak_before,
+            "conditional_leakage_after": cond_leak_after,
+        })
+
+    df = pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Log which claims are empirically supported
+    # ------------------------------------------------------------------
+    if not df.empty:
+        n = len(df)
+        supported = {
+            "PM > 0 (mediation exists)": int((df["PM"] > 0.0).sum()),
+            "NDE nonzero": int(df["NDE_nonzero"].sum()),
+            "HSIC reduction > 10%": int((df["hsic_reduction_pct"] > 10.0).sum()),
+            "Cond. leakage reduced": int(
+                (df["conditional_leakage_after"] < df["conditional_leakage_before"]).sum()
+            ),
+        }
+        logger.info("Causal claims verification summary (%d layers):", n)
+        for claim, count in supported.items():
+            logger.info("  %-35s  %d / %d layers (%.0f%%)", claim, count, n, 100 * count / n)
+
+        if not df["cos_causal_corr"].isna().all():
+            mean_sep = df["cos_causal_corr"].mean()
+            logger.info(
+                "  %-35s  %.4f (lower = more distinct)",
+                "Mean cos(v_causal, v_corr)", mean_sep,
+            )
+
+    # ------------------------------------------------------------------
+    # Persist
+    # ------------------------------------------------------------------
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, "causal_claims_verification.csv")
+        df.to_csv(path, index=False)
+        logger.info("Saved causal claims verification → %s", path)
+
+    return df
+
+
 def run_all_verifications(
     layer_data: Dict,
     probe_results: Dict,

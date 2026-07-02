@@ -69,7 +69,7 @@ class ExperimentRunner:
         self.results["robustness_spuriousness"] = rs_df
 
         logger.info("=== Exp 5: Mediation analysis ===")
-        med_df = run_mediation_analysis(layer_data, probe_results, mediation_dir)
+        med_df = run_mediation_analysis(layer_data, probe_results, output_dir=mediation_dir)
         self.results["mediation"] = med_df
 
         logger.info("=== Exp 6: Theorem verification ===")
