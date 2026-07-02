@@ -42,6 +42,9 @@ def main():
     elif dataset_name == "medqa":
         from src.data.medqa import MedQADataset
         ds = MedQADataset(config, max_samples=ds_cfg.get("max_samples"))
+    elif dataset_name == "medmcqa":
+        from src.data.medmcqa import MedMCQADataset
+        ds = MedMCQADataset(config, max_samples=ds_cfg.get("max_samples"))
     elif dataset_name == "mimic_placeholder":
         from src.data.mimic_placeholder import MIMICPlaceholderDataset
         ds = MIMICPlaceholderDataset(config)
@@ -105,6 +108,16 @@ def main():
     from src.evaluation.experiment_runner import ExperimentRunner
     runner = ExperimentRunner(config, output_dir)
     results = runner.run(layer_data, probe_results, sensitive_attr, spurious_attr)
+
+    # CRA framework intervention study (item 6)
+    try:
+        from src.causal.cra import CRAFramework
+        cra_out = os.path.join(output_dir, "cra")
+        cra = CRAFramework(layer_data, probe_results, config, sensitive_attr, spurious_attr)
+        cra.run_full_intervention_study(cra_out)
+        logger.info("CRA framework outputs: %s", cra_out)
+    except Exception as e:
+        logger.warning("CRAFramework skipped: %s", e)
 
     # Generate figures
     logger.info("Generating figures …")
